@@ -38,6 +38,7 @@ namespace Altinn.Platform.Storage.Controllers;
 /// </summary>
 [Route("storage/api/v1/migration")]
 [ApiController]
+[Authorize(Policy = "PlatformAccess")]
 [ServiceFilter(typeof(ClientIpCheckActionFilterAttribute))]
 [ExcludeFromCodeCoverage]
 [ExcludeFromPublicStorageApi]
@@ -109,7 +110,6 @@ public class MigrationController : ControllerBase
     /// <param name="instance">The instance details to store.</param>
     /// <param name="cancellationToken">CancellationToken</param>
     /// <returns>The stored instance.</returns>
-    [AllowAnonymous]
     [HttpPost("instance")]
     [Consumes("application/json")]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -218,7 +218,6 @@ public class MigrationController : ControllerBase
     /// <param name="visiblePages">Semicolon separated list of visible pages</param>
     /// <param name="cancellationToken">CancellationToken</param>
     /// <returns>The stored data element.</returns>
-    [AllowAnonymous]
     [HttpPost("dataelement/{instanceGuid:guid}")]
     [DisableFormValueModelBinding]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -412,7 +411,6 @@ public class MigrationController : ControllerBase
     /// </summary>
     /// <param name="instanceEvents">The instance events to store</param>
     /// <returns>Created</returns>
-    [AllowAnonymous]
     [HttpPost("instanceevents")]
     [Consumes("application/json")]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -458,7 +456,6 @@ public class MigrationController : ControllerBase
     /// </summary>
     /// <param name="application">The application to store.</param>
     /// <returns>The stored application.</returns>
-    [AllowAnonymous]
     [HttpPost("application")]
     [Consumes("application/json")]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -512,7 +509,6 @@ public class MigrationController : ControllerBase
     /// <param name="language">Language</param>
     /// <param name="key">Text key</param>
     /// <returns>The stored application.</returns>
-    [AllowAnonymous]
     [HttpPost("text/{org}/{app}/{language}/{key}")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -590,7 +586,6 @@ public class MigrationController : ControllerBase
     /// <param name="org">Org</param>
     /// <param name="app">App</param>
     /// <returns>Ok</returns>
-    [AllowAnonymous]
     [HttpPost("policy/{org}/{app}")]
     [DisableFormValueModelBinding]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -619,7 +614,6 @@ public class MigrationController : ControllerBase
     /// <param name="language">Language</param>
     /// <param name="version">Version</param>
     /// <returns>Ok</returns>
-    [AllowAnonymous]
     [HttpPost("codelist/{name}/{language}/{version}")]
     [DisableFormValueModelBinding]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -639,7 +633,6 @@ public class MigrationController : ControllerBase
     /// Upload image
     /// </summary>
     /// <returns>Ok</returns>
-    [AllowAnonymous]
     [HttpPost("pdfimage")]
     [DisableFormValueModelBinding]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -668,7 +661,6 @@ public class MigrationController : ControllerBase
     /// <param name="xsltype">Xsl type</param>
     /// <param name="isPortrait">Format: portrait vs landscape</param>
     /// <returns>Ok</returns>
-    [AllowAnonymous]
     [HttpPost("xsl/{org}/{app}/{lformid}/{pagenumber}/{language}/{xsltype}/{isportrait}")]
     [DisableFormValueModelBinding]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -703,7 +695,6 @@ public class MigrationController : ControllerBase
     /// <param name="instanceGuid">Migrated instance to delete</param>
     /// <param name="cancellationToken">CancellationToken</param>
     /// <returns>Ok</returns>
-    [AllowAnonymous]
     [HttpPost("delete/{instanceGuid:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -726,7 +717,6 @@ public class MigrationController : ControllerBase
     /// </summary>
     /// <param name="request">Pdf request</param>
     /// <returns>Pdf as stream</returns>
-    [AllowAnonymous]
     [HttpPost("pdfproxy")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
