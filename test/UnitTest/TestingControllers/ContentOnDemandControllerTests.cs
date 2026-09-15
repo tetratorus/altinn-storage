@@ -171,12 +171,7 @@ public class ContentOnDemandControllerTests
         // Arrange
         Mock<IAuthorization> authorizationMock = new();
         authorizationMock
-            .Setup(a =>
-                a.AuthorizeEnrichedInstanceAction(
-                    It.IsAny<InstanceInternal>(),
-                    "read"
-                )
-            )
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
             .ReturnsAsync(false);
         HttpClient client = GetTestClient(authorizationServiceMock: authorizationMock);
         string requestUri = GetRequestUri("formdatahtml");
@@ -269,12 +264,7 @@ public class ContentOnDemandControllerTests
         {
             authorizationServiceMock = new Mock<IAuthorization>();
             authorizationServiceMock
-                .Setup(a =>
-                    a.AuthorizeEnrichedInstanceAction(
-                        It.IsAny<InstanceInternal>(),
-                        "read"
-                    )
-                )
+                .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
                 .ReturnsAsync(true);
         }
 
@@ -294,7 +284,10 @@ public class ContentOnDemandControllerTests
                         IPostConfigureOptions<JwtCookieOptions>,
                         JwtCookiePostConfigureOptionsStub
                     >();
-                    services.AddSingleton<IPublicSigningKeyProvider, PublicSigningKeyProviderMock>();
+                    services.AddSingleton<
+                        IPublicSigningKeyProvider,
+                        PublicSigningKeyProviderMock
+                    >();
                     services.AddSingleton(authorizationServiceMock.Object);
                 });
             })

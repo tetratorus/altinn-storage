@@ -330,12 +330,7 @@ public class ContentOnDemandControllerUnitTests
         Guid instanceGuid = Guid.NewGuid();
         Mock<IAuthorization> authorizationMock = new();
         authorizationMock
-            .Setup(a =>
-                a.AuthorizeEnrichedInstanceAction(
-                    It.IsAny<InstanceInternal>(),
-                    "read"
-                )
-            )
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
             .ReturnsAsync(false);
         var (controller, _) = CreateController(
             instanceGuid,
@@ -398,11 +393,7 @@ public class ContentOnDemandControllerUnitTests
         // Assert
         Assert.IsType<NotFoundResult>(result);
         authorizationMock.Verify(
-            a =>
-                a.AuthorizeEnrichedInstanceAction(
-                    It.IsAny<InstanceInternal>(),
-                    "read"
-                ),
+            a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"),
             Times.Never
         );
     }
@@ -421,12 +412,7 @@ public class ContentOnDemandControllerUnitTests
         Mock<IPdfGeneratorClient> pdfMock = new();
         Mock<IAuthorization> authorizationMock = new();
         authorizationMock
-            .Setup(a =>
-                a.AuthorizeEnrichedInstanceAction(
-                    It.IsAny<InstanceInternal>(),
-                    "read"
-                )
-            )
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
             .ReturnsAsync(true);
         IOptions<GeneralSettings> settings = Options.Create(new GeneralSettings());
 
@@ -474,7 +460,7 @@ public class ContentOnDemandControllerUnitTests
         Guid instanceGuid,
         List<DataElementInternal> dataElements,
         string blobContent,
-        Mock<IAuthorization> authorizationMock = null
+        Mock<IAuthorization>? authorizationMock = null
     )
     {
         foreach (DataElementInternal dataElement in dataElements)
@@ -532,12 +518,7 @@ public class ContentOnDemandControllerUnitTests
         {
             authorizationMock = new Mock<IAuthorization>();
             authorizationMock
-                .Setup(a =>
-                    a.AuthorizeEnrichedInstanceAction(
-                        It.IsAny<InstanceInternal>(),
-                        "read"
-                    )
-                )
+                .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
                 .ReturnsAsync(true);
         }
         IOptions<GeneralSettings> settings = Options.Create(new GeneralSettings());
