@@ -66,6 +66,12 @@ public class GeneralSettings
     public string MigrationIpWhiteList { get; set; }
 
     /// <summary>
+    /// Gets or sets a semicolon separated list of reverse proxy IP addresses or CIDR networks whose
+    /// X-Forwarded-For headers are trusted when resolving the client IP address.
+    /// </summary>
+    public string TrustedProxies { get; set; }
+
+    /// <summary>
     /// Gets or sets the URI for the ondemand API
     /// </summary>
     public string OndemandEndpoint { get; set; }

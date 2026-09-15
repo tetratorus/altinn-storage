@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Threading.Tasks;
 using Altinn.Common.AccessToken;
@@ -34,6 +35,7 @@ using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -329,6 +331,37 @@ void ConfigureServices(IServiceCollection services, IConfiguration config)
         };
     });
 
+    services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Clear();
+        foreach (
+            string entry in (generalSettings.TrustedProxies ?? string.Empty).Split(
+                ';',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
+        )
+        {
+            if (IPAddress.TryParse(entry, out IPAddress proxyAddress))
+            {
+                options.KnownProxies.Add(proxyAddress);
+            }
+            else if (
+                System.Net.IPNetwork.TryParse(entry, out System.Net.IPNetwork proxyNetwork)
+            )
+            {
+                options.KnownIPNetworks.Add(proxyNetwork);
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Invalid IP address or network in GeneralSettings:TrustedProxies: '{entry}'"
+                );
+            }
+        }
+    });
+
     services.AddHttpContextAccessor();
     services.AddSingleton<IClaimsPrincipalProvider, ClaimsPrincipalProvider>();
 
@@ -466,6 +499,7 @@ void Configure(IConfiguration config)
         app.UseSwaggerUI(SwaggerExtensions.ConfigureSwaggerUI);
     }
 
+    app.UseForwardedHeaders();
     app.UseRouting();
     app.UseAuthentication();
     app.UseAuthorization();
