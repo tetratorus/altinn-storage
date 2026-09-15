@@ -16,6 +16,7 @@ using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Models;
 using Altinn.Platform.Storage.Repository;
 using Altinn.Platform.Storage.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using PdfSharp.Drawing;
@@ -28,6 +29,7 @@ namespace Altinn.Platform.Storage.Controllers;
 /// <summary>
 /// Implements endpoints on demand content generation
 /// </summary>
+[Authorize(Policy = AuthzConstants.POLICY_INSTANCE_READ)]
 [Route(
     "storage/api/v1/ondemand/{org}/{app}/{instanceOwnerPartyId:int}/{instanceGuid:guid}/{dataGuid:guid}/{language}"
 )]

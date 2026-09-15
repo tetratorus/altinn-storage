@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Models;
 using Altinn.Platform.Storage.Repository;
 using Altinn.Platform.Storage.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -24,6 +26,15 @@ public class ContentOnDemandControllerUnitTests
     private const string _org = "ttd";
     private const string _app = "apps-test";
     private const string _appId = "ttd/apps-test";
+
+    [Fact]
+    public void Controller_RequiresInstanceReadPolicy()
+    {
+        AuthorizeAttribute attribute = typeof(ContentOnDemandController).GetCustomAttribute<AuthorizeAttribute>();
+
+        Assert.NotNull(attribute);
+        Assert.Equal(AuthzConstants.POLICY_INSTANCE_READ, attribute.Policy);
+    }
 
     [Fact]
     public async Task GetFormSummaryAsHtml_WithBlobVersionId_PassesVersionedPathToReadBlob()
