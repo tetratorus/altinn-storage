@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Altinn.Platform.Storage.Authorization;
 using Altinn.Platform.Storage.Clients;
 using Altinn.Platform.Storage.Configuration;
 using Altinn.Platform.Storage.Helpers;
@@ -16,6 +17,7 @@ using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Models;
 using Altinn.Platform.Storage.Repository;
 using Altinn.Platform.Storage.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using PdfSharp.Drawing;
@@ -33,6 +35,7 @@ namespace Altinn.Platform.Storage.Controllers;
 )]
 [ApiExplorerSettings(IgnoreApi = true)]
 [ApiController]
+[Authorize]
 public class ContentOnDemandController : Controller
 {
     private const string _primaryFontFamily = "segoe wp";
@@ -53,6 +56,7 @@ public class ContentOnDemandController : Controller
     private readonly GeneralSettings _generalSettings;
     private readonly IA2OndemandFormattingService _a2OndemandFormattingService;
     private readonly IPdfGeneratorClient _pdfGeneratorClient;
+    private readonly IAuthorization _authorizationService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ContentOnDemandController"/> class
@@ -64,6 +68,7 @@ public class ContentOnDemandController : Controller
     /// <param name="settings">the general settings.</param>
     /// <param name="a2OndemandFormattingService">a2OndemandFormattingService</param>
     /// <param name="pdfGeneratorClient">pdfGeneratorClient</param>
+    /// <param name="authorizationService">The authorization service</param>
     public ContentOnDemandController(
         IInstanceRepository instanceRepository,
         IBlobRepository blobRepository,
@@ -71,7 +76,8 @@ public class ContentOnDemandController : Controller
         IApplicationRepository applicationRepository,
         IOptions<GeneralSettings> settings,
         IA2OndemandFormattingService a2OndemandFormattingService,
-        IPdfGeneratorClient pdfGeneratorClient
+        IPdfGeneratorClient pdfGeneratorClient,
+        IAuthorization authorizationService
     )
     {
         _instanceRepository = instanceRepository;
@@ -81,6 +87,7 @@ public class ContentOnDemandController : Controller
         _generalSettings = settings.Value;
         _a2OndemandFormattingService = a2OndemandFormattingService;
         _pdfGeneratorClient = pdfGeneratorClient;
+        _authorizationService = authorizationService;
     }
 
     static ContentOnDemandController()
@@ -95,6 +102,7 @@ public class ContentOnDemandController : Controller
     /// </summary>
     /// <param name="org">org</param>
     /// <param name="app">app</param>
+    /// <param name="instanceOwnerPartyId">instanceOwnerPartyId</param>
     /// <param name="instanceGuid">instanceGuid</param>
     /// <param name="dataGuid">dataGuid</param>
     /// <param name="language">language</param>
@@ -104,20 +112,24 @@ public class ContentOnDemandController : Controller
     public async Task<ActionResult> GetSignatureAsHtml(
         [FromRoute] string org,
         [FromRoute] string app,
+        [FromRoute] int instanceOwnerPartyId,
         [FromRoute] Guid instanceGuid,
         [FromRoute] Guid dataGuid,
         [FromRoute] string language,
         CancellationToken cancellationToken
     )
     {
-        InstanceInternal instance = await _instanceRepository.GetOne(
-            instanceGuid,
-            true,
-            cancellationToken
-        );
+        (InstanceInternal instance, ActionResult instanceError) =
+            await GetAuthorizedInstanceAsync(
+                org,
+                app,
+                instanceGuid,
+                instanceOwnerPartyId,
+                cancellationToken
+            );
         if (instance is null)
         {
-            return NotFound();
+            return instanceError;
         }
 
         Application application = await _applicationRepository.FindOne(
@@ -153,6 +165,7 @@ public class ContentOnDemandController : Controller
     /// </summary>
     /// <param name="org">org</param>
     /// <param name="app">app</param>
+    /// <param name="instanceOwnerPartyId">instanceOwnerPartyId</param>
     /// <param name="instanceGuid">instanceGuid</param>
     /// <param name="dataGuid">dataGuid</param>
     /// <param name="language">language</param>
@@ -162,20 +175,24 @@ public class ContentOnDemandController : Controller
     public async Task<ActionResult> GetPaymentAsHtml(
         [FromRoute] string org,
         [FromRoute] string app,
+        [FromRoute] int instanceOwnerPartyId,
         [FromRoute] Guid instanceGuid,
         [FromRoute] Guid dataGuid,
         [FromRoute] string language,
         CancellationToken cancellationToken
     )
     {
-        InstanceInternal instance = await _instanceRepository.GetOne(
-            instanceGuid,
-            true,
-            cancellationToken
-        );
+        (InstanceInternal instance, ActionResult instanceError) =
+            await GetAuthorizedInstanceAsync(
+                org,
+                app,
+                instanceGuid,
+                instanceOwnerPartyId,
+                cancellationToken
+            );
         if (instance is null)
         {
-            return NotFound();
+            return instanceError;
         }
 
         Application application = await _applicationRepository.FindOne(
@@ -209,6 +226,7 @@ public class ContentOnDemandController : Controller
     /// </summary>
     /// <param name="org">org</param>
     /// <param name="app">app</param>
+    /// <param name="instanceOwnerPartyId">instanceOwnerPartyId</param>
     /// <param name="instanceGuid">instanceGuid</param>
     /// <param name="dataGuid">dataGuid</param>
     /// <param name="language">language</param>
@@ -218,20 +236,24 @@ public class ContentOnDemandController : Controller
     public async Task<ActionResult<Stream>> GetFormdataAsPdf(
         [FromRoute] string org,
         [FromRoute] string app,
+        [FromRoute] int instanceOwnerPartyId,
         [FromRoute] Guid instanceGuid,
         [FromRoute] Guid dataGuid,
         [FromRoute] string language,
         CancellationToken cancellationToken
     )
     {
-        InstanceInternal instance = await _instanceRepository.GetOne(
-            instanceGuid,
-            true,
-            cancellationToken
-        );
+        (InstanceInternal instance, ActionResult instanceError) =
+            await GetAuthorizedInstanceAsync(
+                org,
+                app,
+                instanceGuid,
+                instanceOwnerPartyId,
+                cancellationToken
+            );
         if (instance is null)
         {
-            return NotFound();
+            return instanceError;
         }
 
         DataElementInternal htmlElement = instance.Data.First(d => d.Id == dataGuid);
@@ -281,6 +303,7 @@ public class ContentOnDemandController : Controller
         foreach (var view in printViews)
         {
             (string html, PrintViewXslBEList updatedViews) = await GetFormdataAsHtmlString(
+                instance,
                 app,
                 instanceGuid,
                 dataGuid,
@@ -344,6 +367,7 @@ public class ContentOnDemandController : Controller
     /// </summary>
     /// <param name="org">org</param>
     /// <param name="app">app</param>
+    /// <param name="instanceOwnerPartyId">instanceOwnerPartyId</param>
     /// <param name="instanceGuid">instanceGuid</param>
     /// <param name="dataGuid">dataGuid</param>
     /// <param name="language">language</param>
@@ -354,6 +378,7 @@ public class ContentOnDemandController : Controller
     public async Task<ActionResult<Stream>> GetFormdataAsHtml(
         [FromRoute] string org,
         [FromRoute] string app,
+        [FromRoute] int instanceOwnerPartyId,
         [FromRoute] Guid instanceGuid,
         [FromRoute] Guid dataGuid,
         [FromRoute] string language,
@@ -361,7 +386,21 @@ public class ContentOnDemandController : Controller
         [FromRoute(Name = "singlepagenr")] int singlePageNr = -1
     )
     {
+        (InstanceInternal instance, ActionResult instanceError) =
+            await GetAuthorizedInstanceAsync(
+                org,
+                app,
+                instanceGuid,
+                instanceOwnerPartyId,
+                cancellationToken
+            );
+        if (instance is null)
+        {
+            return instanceError;
+        }
+
         (Stream html, _) = await GetFormdataAsHtmlStream(
+            instance,
             app,
             instanceGuid,
             dataGuid,
@@ -383,6 +422,7 @@ public class ContentOnDemandController : Controller
     /// </summary>
     /// <param name="org">org</param>
     /// <param name="app">app</param>
+    /// <param name="instanceOwnerPartyId">instanceOwnerPartyId</param>
     /// <param name="instanceGuid">instanceGuid</param>
     /// <param name="dataGuid">dataGuid</param>
     /// <param name="language">language</param>
@@ -392,13 +432,28 @@ public class ContentOnDemandController : Controller
     public async Task<ActionResult<Stream>> GetFormSummaryAsHtml(
         [FromRoute] string org,
         [FromRoute] string app,
+        [FromRoute] int instanceOwnerPartyId,
         [FromRoute] Guid instanceGuid,
         [FromRoute] Guid dataGuid,
         [FromRoute] string language,
         CancellationToken cancellationToken
     )
     {
+        (InstanceInternal instance, ActionResult instanceError) =
+            await GetAuthorizedInstanceAsync(
+                org,
+                app,
+                instanceGuid,
+                instanceOwnerPartyId,
+                cancellationToken
+            );
+        if (instance is null)
+        {
+            return instanceError;
+        }
+
         (Stream html, _) = await GetFormdataAsHtmlStream(
+            instance,
             app,
             instanceGuid,
             dataGuid,
@@ -414,7 +469,42 @@ public class ContentOnDemandController : Controller
         return html;
     }
 
+    private async Task<(InstanceInternal Instance, ActionResult Error)> GetAuthorizedInstanceAsync(
+        string org,
+        string app,
+        Guid instanceGuid,
+        int instanceOwnerPartyId,
+        CancellationToken cancellationToken
+    )
+    {
+        InstanceInternal instance = await _instanceRepository.GetOne(
+            instanceGuid,
+            true,
+            cancellationToken
+        );
+        if (instance is null)
+        {
+            return (null, NotFound());
+        }
+
+        if (
+            instance.InstanceOwner?.PartyId != instanceOwnerPartyId.ToString()
+            || !string.Equals(instance.AppId, $"{org}/{app}", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            return (null, NotFound());
+        }
+
+        if (await _authorizationService.AuthorizeEnrichedInstanceAction(instance, "read") is false)
+        {
+            return (null, Forbid());
+        }
+
+        return (instance, null);
+    }
+
     private async Task<(Stream Html, PrintViewXslBEList Views)> GetFormdataAsHtmlStream(
+        InstanceInternal instance,
         string app,
         Guid instanceGuid,
         Guid dataGuid,
@@ -425,6 +515,7 @@ public class ContentOnDemandController : Controller
     )
     {
         (string html, PrintViewXslBEList views) = await GetFormdataAsHtmlString(
+            instance,
             app,
             instanceGuid,
             dataGuid,
@@ -442,6 +533,7 @@ public class ContentOnDemandController : Controller
     }
 
     private async Task<(string Html, PrintViewXslBEList Views)> GetFormdataAsHtmlString(
+        InstanceInternal instance,
         string app,
         Guid instanceGuid,
         Guid dataGuid,
@@ -451,16 +543,6 @@ public class ContentOnDemandController : Controller
         int singlePageNr = -1
     )
     {
-        InstanceInternal instance = await _instanceRepository.GetOne(
-            instanceGuid,
-            true,
-            cancellationToken
-        );
-        if (instance is null)
-        {
-            return (null, null);
-        }
-
         Application application = await _applicationRepository.FindOne(
             instance.AppId,
             instance.Org

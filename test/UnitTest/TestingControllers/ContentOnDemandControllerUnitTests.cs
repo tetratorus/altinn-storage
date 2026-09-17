@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Altinn.Platform.Storage.Authorization;
 using Altinn.Platform.Storage.Clients;
 using Altinn.Platform.Storage.Configuration;
 using Altinn.Platform.Storage.Controllers;
@@ -49,6 +50,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormSummaryAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             htmlDataGuid,
             "nb",
@@ -88,6 +90,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormSummaryAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             htmlDataGuid,
             "nb",
@@ -138,6 +141,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetSignatureAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             signatureDataGuid,
             "nb",
@@ -188,6 +192,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetPaymentAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             paymentDataGuid,
             "nb",
@@ -219,6 +224,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetSignatureAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -240,6 +246,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetPaymentAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -261,6 +268,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormSummaryAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -282,6 +290,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormdataAsPdf(
             _org,
             _app,
+            555,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -303,6 +312,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormdataAsHtml(
             _org,
             _app,
+            555,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -311,6 +321,119 @@ public class ContentOnDemandControllerUnitTests
 
         // Assert
         Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetSignatureAsHtml_UnauthorizedUser_ReturnsForbid()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Mock<IAuthorization> authorizationMock = new();
+        authorizationMock
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
+            .ReturnsAsync(false);
+        var (controller, _) = CreateController(
+            instanceGuid,
+            [
+                new DataElementInternal
+                {
+                    Id = Guid.NewGuid(),
+                    DataType = "signature-data",
+                },
+            ],
+            "[{}]",
+            authorizationMock
+        );
+
+        // Act
+        ActionResult result = await controller.GetSignatureAsHtml(
+            _org,
+            _app,
+            555,
+            instanceGuid,
+            Guid.NewGuid(),
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task GetSignatureAsHtml_PartyIdMismatch_ReturnsNotFound()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Mock<IAuthorization> authorizationMock = new();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            [
+                new DataElementInternal
+                {
+                    Id = Guid.NewGuid(),
+                    DataType = "signature-data",
+                },
+            ],
+            "[{}]",
+            authorizationMock
+        );
+
+        // Act
+        ActionResult result = await controller.GetSignatureAsHtml(
+            _org,
+            _app,
+            556,
+            instanceGuid,
+            Guid.NewGuid(),
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<NotFoundResult>(result);
+        authorizationMock.Verify(
+            a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task GetSignatureAsHtml_AppMismatch_ReturnsNotFound()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Mock<IAuthorization> authorizationMock = new();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            [
+                new DataElementInternal
+                {
+                    Id = Guid.NewGuid(),
+                    DataType = "signature-data",
+                },
+            ],
+            "[{}]",
+            authorizationMock
+        );
+
+        // Act
+        ActionResult result = await controller.GetSignatureAsHtml(
+            _org,
+            "other-app",
+            555,
+            instanceGuid,
+            Guid.NewGuid(),
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<NotFoundResult>(result);
+        authorizationMock.Verify(
+            a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"),
+            Times.Never
+        );
     }
 
     private static ContentOnDemandController CreateControllerWithMissingInstance(Guid instanceGuid)
@@ -325,6 +448,10 @@ public class ContentOnDemandControllerUnitTests
         Mock<IApplicationRepository> appRepoMock = new();
         Mock<IA2OndemandFormattingService> formattingMock = new();
         Mock<IPdfGeneratorClient> pdfMock = new();
+        Mock<IAuthorization> authorizationMock = new();
+        authorizationMock
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
+            .ReturnsAsync(true);
         IOptions<GeneralSettings> settings = Options.Create(new GeneralSettings());
 
         return new ContentOnDemandController(
@@ -334,7 +461,8 @@ public class ContentOnDemandControllerUnitTests
             appRepoMock.Object,
             settings,
             formattingMock.Object,
-            pdfMock.Object
+            pdfMock.Object,
+            authorizationMock.Object
         );
     }
 
@@ -369,7 +497,8 @@ public class ContentOnDemandControllerUnitTests
     ) CreateController(
         Guid instanceGuid,
         List<DataElementInternal> dataElements,
-        string blobContent
+        string blobContent,
+        Mock<IAuthorization>? authorizationMock = null
     )
     {
         foreach (DataElementInternal dataElement in dataElements)
@@ -423,6 +552,13 @@ public class ContentOnDemandControllerUnitTests
             .Setup(f => f.GetFormdataHtml(It.IsAny<PrintViewXslBEList>(), It.IsAny<Stream>()))
             .Returns("<html>test</html>");
         Mock<IPdfGeneratorClient> pdfMock = new();
+        if (authorizationMock is null)
+        {
+            authorizationMock = new Mock<IAuthorization>();
+            authorizationMock
+                .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
+                .ReturnsAsync(true);
+        }
         IOptions<GeneralSettings> settings = Options.Create(new GeneralSettings());
 
         var controller = new ContentOnDemandController(
@@ -432,7 +568,8 @@ public class ContentOnDemandControllerUnitTests
             appRepoMock.Object,
             settings,
             formattingMock.Object,
-            pdfMock.Object
+            pdfMock.Object,
+            authorizationMock.Object
         );
 
         return (controller, blobRepoMock);

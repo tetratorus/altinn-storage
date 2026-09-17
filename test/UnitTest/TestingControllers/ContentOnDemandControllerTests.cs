@@ -5,18 +5,25 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Altinn.Common.AccessToken.Services;
+using Altinn.Platform.Storage.Authorization;
 using Altinn.Platform.Storage.Controllers;
 using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Models;
 using Altinn.Platform.Storage.Repository;
 using Altinn.Platform.Storage.Services;
 using Altinn.Platform.Storage.UnitTest.Fixture;
+using Altinn.Platform.Storage.UnitTest.Mocks;
+using Altinn.Platform.Storage.UnitTest.Mocks.Authentication;
 using Altinn.Platform.Storage.UnitTest.Utils;
+using AltinnCore.Authentication.JwtCookie;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -144,6 +151,38 @@ public class ContentOnDemandControllerTests
         );
     }
 
+    [Fact]
+    public async Task GetFormdataAsHtml_NoToken_ReturnsUnauthorized()
+    {
+        // Arrange
+        HttpClient client = GetTestClient(bearerAuthToken: string.Empty);
+        string requestUri = GetRequestUri("formdatahtml");
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFormdataAsHtml_NotAuthorized_ReturnsForbidden()
+    {
+        // Arrange
+        Mock<IAuthorization> authorizationMock = new();
+        authorizationMock
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
+            .ReturnsAsync(false);
+        HttpClient client = GetTestClient(authorizationServiceMock: authorizationMock);
+        string requestUri = GetRequestUri("formdatahtml");
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private static InstanceInternal GetInstance(string xmlBlobStoragePath = null)
     {
         return new InstanceInternal
@@ -179,7 +218,9 @@ public class ContentOnDemandControllerTests
 
     private HttpClient GetTestClient(
         Mock<IBlobRepository> blobRepositoryMock = null,
-        string xmlBlobStoragePath = null
+        string xmlBlobStoragePath = null,
+        string bearerAuthToken = null,
+        Mock<IAuthorization> authorizationServiceMock = null
     )
     {
         Mock<IInstanceRepository> instanceRepositoryMock = new();
@@ -219,6 +260,16 @@ public class ContentOnDemandControllerTests
             .Setup(f => f.GetFormdataHtml(It.IsAny<PrintViewXslBEList>(), It.IsAny<Stream>()))
             .Returns(_html);
 
+        if (authorizationServiceMock is null)
+        {
+            authorizationServiceMock = new Mock<IAuthorization>();
+            authorizationServiceMock
+                .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
+                .ReturnsAsync(true);
+        }
+
+        bearerAuthToken ??= PrincipalUtil.GetToken(1337, 1337, 3);
+
         HttpClient client = _factory
             .WithWebHostBuilder(builder =>
             {
@@ -229,9 +280,26 @@ public class ContentOnDemandControllerTests
                     services.AddSingleton(a2RepositoryMock.Object);
                     services.AddSingleton(blobRepositoryMock.Object);
                     services.AddSingleton(formattingServiceMock.Object);
+                    services.AddSingleton<
+                        IPostConfigureOptions<JwtCookieOptions>,
+                        JwtCookiePostConfigureOptionsStub
+                    >();
+                    services.AddSingleton<
+                        IPublicSigningKeyProvider,
+                        PublicSigningKeyProviderMock
+                    >();
+                    services.AddSingleton(authorizationServiceMock.Object);
                 });
             })
             .CreateClient();
+
+        if (!string.IsNullOrEmpty(bearerAuthToken))
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                bearerAuthToken
+            );
+        }
 
         return client;
     }
