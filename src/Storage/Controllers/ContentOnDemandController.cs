@@ -121,6 +121,8 @@ public class ContentOnDemandController : Controller
     {
         (InstanceInternal instance, ActionResult instanceError) =
             await GetAuthorizedInstanceAsync(
+                org,
+                app,
                 instanceGuid,
                 instanceOwnerPartyId,
                 cancellationToken
@@ -182,6 +184,8 @@ public class ContentOnDemandController : Controller
     {
         (InstanceInternal instance, ActionResult instanceError) =
             await GetAuthorizedInstanceAsync(
+                org,
+                app,
                 instanceGuid,
                 instanceOwnerPartyId,
                 cancellationToken
@@ -241,6 +245,8 @@ public class ContentOnDemandController : Controller
     {
         (InstanceInternal instance, ActionResult instanceError) =
             await GetAuthorizedInstanceAsync(
+                org,
+                app,
                 instanceGuid,
                 instanceOwnerPartyId,
                 cancellationToken
@@ -382,6 +388,8 @@ public class ContentOnDemandController : Controller
     {
         (InstanceInternal instance, ActionResult instanceError) =
             await GetAuthorizedInstanceAsync(
+                org,
+                app,
                 instanceGuid,
                 instanceOwnerPartyId,
                 cancellationToken
@@ -433,6 +441,8 @@ public class ContentOnDemandController : Controller
     {
         (InstanceInternal instance, ActionResult instanceError) =
             await GetAuthorizedInstanceAsync(
+                org,
+                app,
                 instanceGuid,
                 instanceOwnerPartyId,
                 cancellationToken
@@ -460,6 +470,8 @@ public class ContentOnDemandController : Controller
     }
 
     private async Task<(InstanceInternal Instance, ActionResult Error)> GetAuthorizedInstanceAsync(
+        string org,
+        string app,
         Guid instanceGuid,
         int instanceOwnerPartyId,
         CancellationToken cancellationToken
@@ -475,7 +487,10 @@ public class ContentOnDemandController : Controller
             return (null, NotFound());
         }
 
-        if (instance.InstanceOwner?.PartyId != instanceOwnerPartyId.ToString())
+        if (
+            instance.InstanceOwner?.PartyId != instanceOwnerPartyId.ToString()
+            || !string.Equals(instance.AppId, $"{org}/{app}", StringComparison.OrdinalIgnoreCase)
+        )
         {
             return (null, NotFound());
         }

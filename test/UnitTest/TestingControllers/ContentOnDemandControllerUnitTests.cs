@@ -398,6 +398,44 @@ public class ContentOnDemandControllerUnitTests
         );
     }
 
+    [Fact]
+    public async Task GetSignatureAsHtml_AppMismatch_ReturnsNotFound()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Mock<IAuthorization> authorizationMock = new();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            [
+                new DataElementInternal
+                {
+                    Id = Guid.NewGuid(),
+                    DataType = "signature-data",
+                },
+            ],
+            "[{}]",
+            authorizationMock
+        );
+
+        // Act
+        ActionResult result = await controller.GetSignatureAsHtml(
+            _org,
+            "other-app",
+            555,
+            instanceGuid,
+            Guid.NewGuid(),
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<NotFoundResult>(result);
+        authorizationMock.Verify(
+            a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"),
+            Times.Never
+        );
+    }
+
     private static ContentOnDemandController CreateControllerWithMissingInstance(Guid instanceGuid)
     {
         Mock<IInstanceRepository> instanceRepoMock = new();
