@@ -319,6 +319,10 @@ void ConfigureServices(IServiceCollection services, IConfiguration config)
         .AddPolicy(
             "PlatformAccess",
             policy => policy.Requirements.Add(new AccessTokenRequirement())
+        )
+        .AddPolicy(
+            AuthzConstants.POLICY_PLATFORM_ISSUED_ACCESS_TOKEN,
+            policy => policy.Requirements.Add(new AccessTokenRequirement("platform"))
         );
 
     services.AddSingleton<ClientIpCheckActionFilterAttribute>(container =>
