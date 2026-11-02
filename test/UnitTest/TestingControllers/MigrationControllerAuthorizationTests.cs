@@ -28,6 +28,7 @@ using Altinn.Platform.Storage.Wrappers;
 using AltinnCore.Authentication.JwtCookie;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -39,20 +40,21 @@ using Xunit;
 namespace Altinn.Platform.Storage.UnitTest.TestingControllers;
 
 public class MigrationControllerAuthorizationTests(
-    TestApplicationFactory<MigrationController> factory
-) : IClassFixture<TestApplicationFactory<MigrationController>>
+    MigrationControllerAuthorizationTests.MigrationHostFixture fixture
+) : IClassFixture<MigrationControllerAuthorizationTests.MigrationHostFixture>
 {
     private const string _allowedIp = "10.0.0.1";
     private const string _deletePath = "storage/api/v1/migration/delete/";
+    private const string _testRemoteIpHeader = "X-Test-Remote-Ip";
 
-    private readonly TestApplicationFactory<MigrationController> _factory = factory;
+    private readonly HttpClient _client = fixture.Client;
 
     [Fact]
     public async Task Delete_NoAccessTokenAndNoForwardedHeader_Rejected()
     {
-        HttpClient client = GetTestClient(_allowedIp);
+        using HttpRequestMessage request = CreateRequest(_allowedIp);
 
-        HttpResponseMessage response = await client.PostAsync(_deletePath + Guid.NewGuid(), null);
+        HttpResponseMessage response = await _client.SendAsync(request);
 
         AssertRejected(response);
     }
@@ -60,11 +62,10 @@ public class MigrationControllerAuthorizationTests(
     [Fact]
     public async Task Delete_NoAccessTokenWithSpoofedForwardedHeader_Rejected()
     {
-        HttpClient client = GetTestClient("203.0.113.7");
-        using HttpRequestMessage request = new(HttpMethod.Post, _deletePath + Guid.NewGuid());
+        using HttpRequestMessage request = CreateRequest("203.0.113.7");
         request.Headers.Add("X-Forwarded-For", $"{_allowedIp}, 203.0.113.7");
 
-        HttpResponseMessage response = await client.SendAsync(request);
+        HttpResponseMessage response = await _client.SendAsync(request);
 
         AssertRejected(response);
     }
@@ -72,11 +73,10 @@ public class MigrationControllerAuthorizationTests(
     [Fact]
     public async Task Delete_AccessTokenFromNonPlatformIssuer_Rejected()
     {
-        HttpClient client = GetTestClient(_allowedIp);
-        using HttpRequestMessage request = new(HttpMethod.Post, _deletePath + Guid.NewGuid());
+        using HttpRequestMessage request = CreateRequest(_allowedIp);
         request.Headers.Add("PlatformAccessToken", CreatePlatformSignedToken("ttd"));
 
-        HttpResponseMessage response = await client.SendAsync(request);
+        HttpResponseMessage response = await _client.SendAsync(request);
 
         AssertRejected(response);
     }
@@ -90,15 +90,14 @@ public class MigrationControllerAuthorizationTests(
         string forwardedFor
     )
     {
-        HttpClient client = GetTestClient(remoteIp);
-        using HttpRequestMessage request = new(HttpMethod.Post, _deletePath + Guid.NewGuid());
+        using HttpRequestMessage request = CreateRequest(remoteIp);
         request.Headers.Add("PlatformAccessToken", PrincipalUtil.GetAccessToken());
         if (forwardedFor is not null)
         {
             request.Headers.Add("X-Forwarded-For", forwardedFor);
         }
 
-        HttpResponseMessage response = await client.SendAsync(request);
+        HttpResponseMessage response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -106,11 +105,10 @@ public class MigrationControllerAuthorizationTests(
     [Fact]
     public async Task Delete_PlatformAccessTokenFromSafelistedIp_ReachesAction()
     {
-        HttpClient client = GetTestClient(_allowedIp);
-        using HttpRequestMessage request = new(HttpMethod.Post, _deletePath + Guid.NewGuid());
+        using HttpRequestMessage request = CreateRequest(_allowedIp);
         request.Headers.Add("PlatformAccessToken", PrincipalUtil.GetAccessToken());
 
-        HttpResponseMessage response = await client.SendAsync(request);
+        HttpResponseMessage response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -143,40 +141,61 @@ public class MigrationControllerAuthorizationTests(
         return handler.WriteToken(handler.CreateToken(descriptor));
     }
 
-    private HttpClient GetTestClient(string remoteIp)
+    private static HttpRequestMessage CreateRequest(string remoteIp)
     {
-        Mock<IInstanceRepository> instanceRepository = new();
-        instanceRepository
-            .Setup(r => r.GetOne(It.IsAny<Guid>(), false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((InstanceInternal)null);
+        HttpRequestMessage request = new(HttpMethod.Post, _deletePath + Guid.NewGuid());
+        request.Headers.Add(_testRemoteIpHeader, remoteIp);
+        return request;
+    }
 
-        var factory = _factory.WithWebHostBuilder(builder =>
+    public sealed class MigrationHostFixture : IDisposable
+    {
+        private readonly WebApplicationFactory<MigrationController> _factory;
+
+        public MigrationHostFixture()
         {
-            builder.ConfigureTestServices(services =>
-            {
-                services.AddMockRepositories();
-                services.AddSingleton(instanceRepository.Object);
-                services.AddSingleton(new Mock<IA2Repository>().Object);
-                services.AddSingleton(new Mock<IKeyVaultClientWrapper>().Object);
-                services.AddSingleton(new Mock<IMessageBus>().Object);
-                services.AddSingleton<
-                    IPartiesWithInstancesClient,
-                    PartiesWithInstancesClientMock
-                >();
-                services.AddSingleton<IPDP, PepWithPDPAuthorizationMockSI>();
-                services.AddSingleton<
-                    IPostConfigureOptions<JwtCookieOptions>,
-                    JwtCookiePostConfigureOptionsStub
-                >();
-                services.AddSingleton<IPublicSigningKeyProvider, PlatformKeyForAnyIssuer>();
-                services.AddSingleton(
-                    new ClientIpCheckActionFilterAttribute { Safelist = _allowedIp }
-                );
-                services.AddSingleton<IStartupFilter>(new RemoteIpStartupFilter(remoteIp));
-            });
-        });
+            Mock<IInstanceRepository> instanceRepository = new();
+            instanceRepository
+                .Setup(r => r.GetOne(It.IsAny<Guid>(), false, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((InstanceInternal)null);
 
-        return factory.CreateClient();
+            _factory = new TestApplicationFactory<MigrationController>().WithWebHostBuilder(
+                builder =>
+                {
+                    builder.ConfigureTestServices(services =>
+                    {
+                        services.AddMockRepositories();
+                        services.AddSingleton(instanceRepository.Object);
+                        services.AddSingleton(new Mock<IA2Repository>().Object);
+                        services.AddSingleton(new Mock<IKeyVaultClientWrapper>().Object);
+                        services.AddSingleton(new Mock<IMessageBus>().Object);
+                        services.AddSingleton<
+                            IPartiesWithInstancesClient,
+                            PartiesWithInstancesClientMock
+                        >();
+                        services.AddSingleton<IPDP, PepWithPDPAuthorizationMockSI>();
+                        services.AddSingleton<
+                            IPostConfigureOptions<JwtCookieOptions>,
+                            JwtCookiePostConfigureOptionsStub
+                        >();
+                        services.AddSingleton<IPublicSigningKeyProvider, PlatformKeyForAnyIssuer>();
+                        services.AddSingleton(
+                            new ClientIpCheckActionFilterAttribute { Safelist = _allowedIp }
+                        );
+                        services.AddSingleton<IStartupFilter, RemoteIpStartupFilter>();
+                    });
+                }
+            );
+            Client = _factory.CreateClient();
+        }
+
+        public HttpClient Client { get; }
+
+        public void Dispose()
+        {
+            Client.Dispose();
+            _factory.Dispose();
+        }
     }
 
     private sealed class PlatformKeyForAnyIssuer : IPublicSigningKeyProvider
@@ -187,7 +206,7 @@ public class MigrationControllerAuthorizationTests(
             _inner.GetSigningKeys("platform");
     }
 
-    private sealed class RemoteIpStartupFilter(string remoteIp) : IStartupFilter
+    private sealed class RemoteIpStartupFilter : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
             app =>
@@ -195,7 +214,9 @@ public class MigrationControllerAuthorizationTests(
                 app.Use(
                     (context, nextMiddleware) =>
                     {
-                        context.Connection.RemoteIpAddress = IPAddress.Parse(remoteIp);
+                        context.Connection.RemoteIpAddress = IPAddress.Parse(
+                            context.Request.Headers[_testRemoteIpHeader]
+                        );
                         return nextMiddleware();
                     }
                 );
