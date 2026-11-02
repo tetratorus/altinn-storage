@@ -61,7 +61,8 @@ public class GeneralSettings
     public int AppMetadataCacheLifeTimeInSeconds { get; set; }
 
     /// <summary>
-    /// Gets or sets a semicolon separated white list of IP addresses for the migration controller
+    /// Gets or sets a semicolon separated white list of IP addresses for the migration controller.
+    /// Entries are matched exactly against the connection's remote IP address; an empty list denies all callers.
     /// </summary>
     public string MigrationIpWhiteList { get; set; }
 
