@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine3.24@sha256:979da27fc87dc255f4675b7642556cdcba9307459f8891f85f3cc26edcd7e766 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine3.24@sha256:0294f285d062afacc8b5f6d7febb0cd4ee879320e5585fa15f2f4ebf1feb9ba7 AS build
 
 COPY src/Storage ./Storage
 COPY src/DbTools ./DbTools
@@ -15,7 +15,7 @@ WORKDIR ../Storage/
 RUN dotnet build ./Altinn.Platform.Storage.csproj -c Release -o /app_output
 RUN dotnet publish ./Altinn.Platform.Storage.csproj -c Release -o /app_output
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine3.24@sha256:eb7c0c9ef04479bfff191036f6b8959a7d6bac983bd7160c6b8b84b20d3ad0e7 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine3.24@sha256:21c3f9798416cba4c0576a947c286231cb71ea2884896cb968253f5c9668f930 AS final
 EXPOSE 5010
 WORKDIR /app
 COPY --from=build /app_output .
