@@ -1267,6 +1267,11 @@ public class InstancesController : ControllerBase
             return BadRequest("Org or AppId must be defined.");
         }
 
+        if (!string.IsNullOrEmpty(queryParameters.AppId) && !queryParameters.AppId.Contains('/'))
+        {
+            return BadRequest("AppId must be in the format 'org/app'.");
+        }
+
         if (string.IsNullOrEmpty(queryParameters.Org))
         {
             queryParameters.Org = queryParameters.AppId.Split('/')[0];

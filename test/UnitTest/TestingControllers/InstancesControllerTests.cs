@@ -1966,6 +1966,54 @@ public class InstancesControllerTests(TestApplicationFactory<InstancesController
     }
 
     /// <summary>
+    /// Test case: Org requests instances with an appId that is not in the form "org/app".
+    /// Expected: Returns status bad request without querying the repository.
+    /// </summary>
+    [Theory]
+    [InlineData("testOrg")]
+    [InlineData("otherOrg")]
+    public async Task GetMany_OrgRequestsInstancesWithAppIdWithoutSlash_ReturnsBadRequest(
+        string appId
+    )
+    {
+        // Arrange
+        string requestUri = $"{BasePath}?appId={appId}";
+
+        Mock<IInstanceRepository> repository = new();
+        repository
+            .Setup(r =>
+                r.GetInstancesFromQuery(
+                    It.IsAny<InstanceQueryParameters>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(new InstanceQueryResult());
+        HttpClient client = GetTestClient(repository);
+        string token = PrincipalUtil.GetOrgToken(
+            "testOrg",
+            scope: "altinn:serviceowner/instances.read"
+        );
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        string expected = "AppId must be in the format 'org/app'.";
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+        string responseMessage = await response.Content.ReadAsStringAsync();
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(expected, responseMessage);
+        repository.Verify(
+            r =>
+                r.GetInstancesFromQuery(
+                    It.IsAny<InstanceQueryParameters>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
     /// Test case: Get Multiple instances using client with incorrect scope.
     /// Expected: Returns status forbidden.
     /// </summary>
