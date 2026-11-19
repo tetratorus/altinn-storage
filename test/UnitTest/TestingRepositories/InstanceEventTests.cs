@@ -151,6 +151,43 @@ public class InstanceEventTests : IClassFixture<InstanceEventFixture>
     }
 
     /// <summary>
+    /// Test ListInstanceEvents with only one of the two time bounds set
+    /// </summary>
+    [Fact]
+    public async Task DataElement_ListInstanceEvents_SingleTimeBound_Ok()
+    {
+        // Arrange
+        await _instanceEventFixture.InstanceEventRepo.InsertInstanceEvent(_ie1);
+        await _instanceEventFixture.InstanceEventRepo.InsertInstanceEvent(_ie2);
+        await _instanceEventFixture.InstanceEventRepo.InsertInstanceEvent(_ie3);
+        DateTime bound = DateTime.Parse(
+            "2000-01-01",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal
+        );
+
+        // Act
+        List<InstanceEvent> fromOnly =
+            await _instanceEventFixture.InstanceEventRepo.ListInstanceEvents(
+                _instanceGuid,
+                null,
+                bound,
+                null
+            );
+        List<InstanceEvent> toOnly =
+            await _instanceEventFixture.InstanceEventRepo.ListInstanceEvents(
+                _instanceGuid,
+                null,
+                null,
+                bound
+            );
+
+        // Assert
+        Assert.Equal([_ie2.Id, _ie3.Id], fromOnly.Select(ie => ie.Id));
+        Assert.Equal([_ie1.Id], toOnly.Select(ie => ie.Id));
+    }
+
+    /// <summary>
     /// Test DeleteAllInstanceEvents
     /// </summary>
     [Fact]

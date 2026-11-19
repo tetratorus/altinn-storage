@@ -1,6 +1,8 @@
 #nullable disable
 
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -13,6 +15,7 @@ using Altinn.Platform.Storage.Configuration;
 using Altinn.Platform.Storage.Controllers;
 using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Messages;
+using Altinn.Platform.Storage.Repository;
 using Altinn.Platform.Storage.UnitTest.Fixture;
 using Altinn.Platform.Storage.UnitTest.Mocks;
 using Altinn.Platform.Storage.UnitTest.Mocks.Authentication;
@@ -150,7 +153,7 @@ public class InstanceEventsControllerTests
 
         if (response.StatusCode.Equals(HttpStatusCode.InternalServerError))
         {
-            string serverContent = await response.Content.ReadAsStringAsync();
+            string serverContent = await response.Content.ReadFromJsonAsync<string>();
             Assert.Equal("Hei", serverContent);
         }
 
@@ -274,9 +277,150 @@ public class InstanceEventsControllerTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    /// <summary>
+    /// Test case: Get events with every combination of present and absent from/to bounds.
+    /// Expected: Each supplied bound is passed on to the repository and each missing bound is left open.
+    /// </summary>
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("2019-05-03T11:55:23", null)]
+    [InlineData(null, "2019-05-03T12:55:23")]
+    [InlineData("2019-05-03T11:55:23", "2019-05-03T12:55:23")]
+    [InlineData("2019-05-03T11:55:23", "2019-05-03T11:55:23")]
+    public async Task Get_WithOptionalTimeBounds_PassesEachSuppliedBoundToRepository(
+        string from,
+        string to
+    )
+    {
+        // Arrange
+        string requestUri =
+            "storage/api/v1/instances/1337/3c42ee2a-9464-42a8-a976-16eb926bd20a/events"
+            + BuildTimeBoundQuery(from, to);
+
+        DateTime? expectedFrom = from == null ? null : ToUtc(from);
+        DateTime? expectedTo = to == null ? null : ToUtc(to);
+
+        Mock<IInstanceEventRepository> repositoryMock = new Mock<IInstanceEventRepository>();
+        repositoryMock
+            .Setup(r =>
+                r.ListInstanceEvents(
+                    It.IsAny<Guid>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<DateTime?>(),
+                    It.IsAny<DateTime?>()
+                )
+            )
+            .ReturnsAsync([]);
+
+        HttpClient client = GetTestClient(instanceEventRepositoryMock: repositoryMock);
+        string token = PrincipalUtil.GetToken(3, 1337);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        repositoryMock.Verify(
+            r =>
+                r.ListInstanceEvents(
+                    Guid.Parse("3c42ee2a-9464-42a8-a976-16eb926bd20a"),
+                    It.IsAny<string[]>(),
+                    expectedFrom,
+                    expectedTo
+                ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Test case: Get events with a from/to bound that is not a valid timestamp, alone or together with a valid one.
+    /// Expected: Returns bad request without querying the repository.
+    /// </summary>
+    [Theory]
+    [InlineData("not-a-date", null)]
+    [InlineData(null, "not-a-date")]
+    [InlineData("not-a-date", "2019-05-03T12:55:23")]
+    [InlineData("2019-05-03T11:55:23", "not-a-date")]
+    public async Task Get_WithInvalidTimeBound_ReturnsBadRequest(string from, string to)
+    {
+        // Arrange
+        string requestUri =
+            "storage/api/v1/instances/1337/3c42ee2a-9464-42a8-a976-16eb926bd20a/events"
+            + BuildTimeBoundQuery(from, to);
+
+        Mock<IInstanceEventRepository> repositoryMock = new Mock<IInstanceEventRepository>();
+        HttpClient client = GetTestClient(instanceEventRepositoryMock: repositoryMock);
+        string token = PrincipalUtil.GetToken(3, 1337);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            "Unable to perform query. Invalid format for time span. Use string format of UTC.",
+            await response.Content.ReadFromJsonAsync<string>()
+        );
+        repositoryMock.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// Test case: Get events with a from bound that is later than the to bound.
+    /// Expected: Returns bad request without querying the repository.
+    /// </summary>
+    [Fact]
+    public async Task Get_WithFromLaterThanTo_ReturnsBadRequest()
+    {
+        // Arrange
+        string requestUri =
+            "storage/api/v1/instances/1337/3c42ee2a-9464-42a8-a976-16eb926bd20a/events"
+            + BuildTimeBoundQuery("2019-05-03T12:55:23", "2019-05-03T11:55:23");
+
+        Mock<IInstanceEventRepository> repositoryMock = new Mock<IInstanceEventRepository>();
+        HttpClient client = GetTestClient(instanceEventRepositoryMock: repositoryMock);
+        string token = PrincipalUtil.GetToken(3, 1337);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            "Unable to perform query. The 'from' timestamp must not be later than the 'to' timestamp.",
+            await response.Content.ReadFromJsonAsync<string>()
+        );
+        repositoryMock.VerifyNoOtherCalls();
+    }
+
+    private static string BuildTimeBoundQuery(string from, string to)
+    {
+        List<string> parameters = [];
+        if (from != null)
+        {
+            parameters.Add($"from={Uri.EscapeDataString(from)}");
+        }
+
+        if (to != null)
+        {
+            parameters.Add($"to={Uri.EscapeDataString(to)}");
+        }
+
+        return parameters.Count == 0 ? string.Empty : "?" + string.Join("&", parameters);
+    }
+
+    private static DateTime ToUtc(string timestamp) =>
+        DateTime.SpecifyKind(
+            DateTime.Parse(timestamp, CultureInfo.InvariantCulture),
+            DateTimeKind.Utc
+        );
+
     private HttpClient GetTestClient(
         Mock<IMessageBus> messageBusMock = null,
-        bool enableWolverine = false
+        bool enableWolverine = false,
+        Mock<IInstanceEventRepository> instanceEventRepositoryMock = null
     )
     {
         // No setup required for these services. They are not in use by the InstanceEventController
@@ -290,6 +434,10 @@ public class InstanceEventsControllerTests
                 builder.ConfigureTestServices(services =>
                 {
                     services.AddMockRepositories();
+                    if (instanceEventRepositoryMock != null)
+                    {
+                        services.AddSingleton(instanceEventRepositoryMock.Object);
+                    }
 
                     services.AddSingleton(keyVaultWrapper.Object);
                     services.AddSingleton(partiesWrapper.Object);

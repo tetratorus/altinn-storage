@@ -124,13 +124,15 @@ public class InstanceEventsController : ControllerBase
     /// <param name="instanceOwnerPartyId">The party id of the instance owner.</param>
     /// <param name="instanceGuid">The id of the instance that the event(s) is associated with.</param>
     /// <param name="eventTypes">Array of event types to filter the events by.</param>
-    /// <param name="from">Lower bound for DateTime span to filter events by.</param>
-    /// <param name="to">Upper bound for DateTime span to filter events by.</param>
+    /// <param name="from">Inclusive lower bound for DateTime span to filter events by. Optional; when omitted the span has no lower bound.</param>
+    /// <param name="to">Inclusive upper bound for DateTime span to filter events by. Optional; when omitted the span has no upper bound.</param>
     /// <returns>List of instance events.</returns>
     /// <!--
     /// GET  storage/api/v1/instances/{instanceId}/events
     /// GET  storage/api/v1/instances/{instanceId}/events?eventTypes=deleted,submited
     /// GET  storage/api/v1/instances/{instanceId}/events?from=2019-05-03T11:55:23&to=2019-05-03T12:55:23
+    /// GET  storage/api/v1/instances/{instanceId}/events?from=2019-05-03T11:55:23
+    /// GET  storage/api/v1/instances/{instanceId}/events?to=2019-05-03T12:55:23
     /// GET  storage/api/v1/instances/{instanceId}/events?from=2019-05-03T11:55:23&to=2019-05-03T12:55:23&eventTypes=deleted,submited
     /// -->
     [Authorize(Policy = AuthzConstants.POLICY_INSTANCE_READ)]
@@ -149,19 +151,30 @@ public class InstanceEventsController : ControllerBase
         DateTime? fromDateTime = null,
             toDateTime = null;
 
-        if (!(string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to)))
+        try
         {
-            try
+            if (!string.IsNullOrEmpty(from))
             {
                 fromDateTime = DateTimeHelper.ParseAndConvertToUniversalTime(from);
+            }
+
+            if (!string.IsNullOrEmpty(to))
+            {
                 toDateTime = DateTimeHelper.ParseAndConvertToUniversalTime(to);
             }
-            catch
-            {
-                return BadRequest(
-                    "Unable to perform query. Invalid format for time span. Use string format of UTC."
-                );
-            }
+        }
+        catch (FormatException)
+        {
+            return BadRequest(
+                "Unable to perform query. Invalid format for time span. Use string format of UTC."
+            );
+        }
+
+        if (fromDateTime > toDateTime)
+        {
+            return BadRequest(
+                "Unable to perform query. The 'from' timestamp must not be later than the 'to' timestamp."
+            );
         }
 
         List<InstanceEvent> instanceEvents = await _repository.ListInstanceEvents(
