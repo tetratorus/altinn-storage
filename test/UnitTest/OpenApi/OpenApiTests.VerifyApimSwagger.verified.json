@@ -1216,7 +1216,7 @@
           {
             "name": "from",
             "in": "query",
-            "description": "Lower bound for DateTime span to filter events by.",
+            "description": "Inclusive lower bound for DateTime span to filter events by. Optional; when omitted the span has no lower bound.",
             "schema": {
               "type": "string"
             }
@@ -1224,7 +1224,7 @@
           {
             "name": "to",
             "in": "query",
-            "description": "Upper bound for DateTime span to filter events by.",
+            "description": "Inclusive upper bound for DateTime span to filter events by. Optional; when omitted the span has no upper bound.",
             "schema": {
               "type": "string"
             }
