@@ -129,33 +129,31 @@ public class CleanupControllerAuthorizationTests(
         {
             ResetMocks();
 
-            _factory = new TestApplicationFactory<CleanupController>().WithWebHostBuilder(
-                builder =>
+            _factory = new TestApplicationFactory<CleanupController>().WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureTestServices(services =>
                 {
-                    builder.ConfigureTestServices(services =>
-                    {
-                        services.AddMockRepositories();
-                        services.AddTransient(_ => InstanceRepository.Object);
-                        services.AddTransient(_ => ApplicationRepository.Object);
-                        services.AddTransient(_ => BlobRepository.Object);
-                        services.AddTransient(_ => DataRepository.Object);
-                        services.AddTransient(_ => InstanceEventRepository.Object);
-                        services.AddTransient(_ => InstanceMutationRepository.Object);
-                        services.AddSingleton(new Mock<IKeyVaultClientWrapper>().Object);
-                        services.AddSingleton(new Mock<IMessageBus>().Object);
-                        services.AddSingleton<
-                            IPartiesWithInstancesClient,
-                            PartiesWithInstancesClientMock
-                        >();
-                        services.AddSingleton<IPDP, PepWithPDPAuthorizationMockSI>();
-                        services.AddSingleton<
-                            IPostConfigureOptions<JwtCookieOptions>,
-                            JwtCookiePostConfigureOptionsStub
-                        >();
-                        services.AddSingleton<IPublicSigningKeyProvider, PlatformKeyForAnyIssuer>();
-                    });
-                }
-            );
+                    services.AddMockRepositories();
+                    services.AddTransient(_ => InstanceRepository.Object);
+                    services.AddTransient(_ => ApplicationRepository.Object);
+                    services.AddTransient(_ => BlobRepository.Object);
+                    services.AddTransient(_ => DataRepository.Object);
+                    services.AddTransient(_ => InstanceEventRepository.Object);
+                    services.AddTransient(_ => InstanceMutationRepository.Object);
+                    services.AddSingleton(new Mock<IKeyVaultClientWrapper>().Object);
+                    services.AddSingleton(new Mock<IMessageBus>().Object);
+                    services.AddSingleton<
+                        IPartiesWithInstancesClient,
+                        PartiesWithInstancesClientMock
+                    >();
+                    services.AddSingleton<IPDP, PepWithPDPAuthorizationMockSI>();
+                    services.AddSingleton<
+                        IPostConfigureOptions<JwtCookieOptions>,
+                        JwtCookiePostConfigureOptionsStub
+                    >();
+                    services.AddSingleton<IPublicSigningKeyProvider, PlatformKeyForAnyIssuer>();
+                });
+            });
             Client = _factory.CreateClient();
         }
 
