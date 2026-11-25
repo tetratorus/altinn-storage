@@ -181,6 +181,9 @@ public class CleanupControllerAuthorizationTests(
                 .Setup(r => r.GetHardDeletedDataElements(It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             InstanceRepository
+                .Setup(r => r.GetOrphanBlobVersionsForCleanup(It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+            InstanceRepository
                 .Setup(r =>
                     r.GetInstancesFromQuery(
                         It.IsAny<InstanceQueryParameters>(),
