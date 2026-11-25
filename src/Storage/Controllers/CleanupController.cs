@@ -11,6 +11,7 @@ using Altinn.Platform.Storage.Helpers;
 using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Models;
 using Altinn.Platform.Storage.Repository;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,7 @@ namespace Altinn.Platform.Storage.Controllers;
 /// <param name="logger">the logger</param>
 [Route("storage/api/v1/cleanup")]
 [ApiController]
+[Authorize(Policy = AuthzConstants.POLICY_PLATFORM_ISSUED_ACCESS_TOKEN)]
 public class CleanupController(
     IInstanceRepository instanceRepository,
     IApplicationRepository applicationRepository,
