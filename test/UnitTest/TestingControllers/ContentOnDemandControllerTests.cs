@@ -5,18 +5,23 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Altinn.Platform.Storage.Authorization;
 using Altinn.Platform.Storage.Controllers;
 using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Models;
 using Altinn.Platform.Storage.Repository;
 using Altinn.Platform.Storage.Services;
 using Altinn.Platform.Storage.UnitTest.Fixture;
+using Altinn.Platform.Storage.UnitTest.Mocks.Authentication;
 using Altinn.Platform.Storage.UnitTest.Utils;
+using AltinnCore.Authentication.JwtCookie;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -144,6 +149,66 @@ public class ContentOnDemandControllerTests
         );
     }
 
+    [Theory]
+    [InlineData("signature")]
+    [InlineData("payment")]
+    [InlineData("formdatapdf")]
+    [InlineData("formdatahtml")]
+    [InlineData("formsummaryhtml")]
+    public async Task Get_WithoutToken_ReturnsUnauthorized(string endpoint)
+    {
+        // Arrange
+        Mock<IBlobRepository> blobRepositoryMock = new();
+        HttpClient client = GetTestClient(blobRepositoryMock, authenticated: false);
+        string requestUri = GetRequestUri(endpoint);
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        blobRepositoryMock.Verify(
+            br =>
+                br.ReadBlob(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Theory]
+    [InlineData("signature")]
+    [InlineData("payment")]
+    [InlineData("formdatapdf")]
+    [InlineData("formdatahtml")]
+    [InlineData("formsummaryhtml")]
+    public async Task Get_UserNotAuthorizedForInstance_ReturnsForbidden(string endpoint)
+    {
+        // Arrange
+        Mock<IBlobRepository> blobRepositoryMock = new();
+        HttpClient client = GetTestClient(blobRepositoryMock, authorized: false);
+        string requestUri = GetRequestUri(endpoint);
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        blobRepositoryMock.Verify(
+            br =>
+                br.ReadBlob(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
     private static InstanceInternal GetInstance(string xmlBlobStoragePath = null)
     {
         return new InstanceInternal
@@ -179,9 +244,16 @@ public class ContentOnDemandControllerTests
 
     private HttpClient GetTestClient(
         Mock<IBlobRepository> blobRepositoryMock = null,
-        string xmlBlobStoragePath = null
+        string xmlBlobStoragePath = null,
+        bool authenticated = true,
+        bool authorized = true
     )
     {
+        Mock<IAuthorization> authorizationMock = new();
+        authorizationMock
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
+            .ReturnsAsync(authorized);
+
         Mock<IInstanceRepository> instanceRepositoryMock = new();
         instanceRepositoryMock
             .Setup(ir => ir.GetOne(_instanceGuid, true, It.IsAny<CancellationToken>()))
@@ -229,9 +301,23 @@ public class ContentOnDemandControllerTests
                     services.AddSingleton(a2RepositoryMock.Object);
                     services.AddSingleton(blobRepositoryMock.Object);
                     services.AddSingleton(formattingServiceMock.Object);
+                    services.AddSingleton(authorizationMock.Object);
+                    services.AddSingleton<
+                        IPostConfigureOptions<JwtCookieOptions>,
+                        JwtCookiePostConfigureOptionsStub
+                    >();
                 });
             })
             .CreateClient();
+
+        if (authenticated)
+        {
+            string token = PrincipalUtil.GetToken(3, _instanceOwnerPartyId);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                token
+            );
+        }
 
         return client;
     }

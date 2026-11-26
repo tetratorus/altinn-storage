@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Altinn.Platform.Storage.Authorization;
 using Altinn.Platform.Storage.Clients;
 using Altinn.Platform.Storage.Configuration;
 using Altinn.Platform.Storage.Controllers;
@@ -24,6 +25,7 @@ public class ContentOnDemandControllerUnitTests
     private const string _org = "ttd";
     private const string _app = "apps-test";
     private const string _appId = "ttd/apps-test";
+    private const int _instanceOwnerPartyId = 555;
 
     [Fact]
     public async Task GetFormSummaryAsHtml_WithBlobVersionId_PassesVersionedPathToReadBlob()
@@ -49,6 +51,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormSummaryAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             htmlDataGuid,
             "nb",
@@ -88,6 +91,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormSummaryAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             htmlDataGuid,
             "nb",
@@ -138,6 +142,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetSignatureAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             signatureDataGuid,
             "nb",
@@ -188,6 +193,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetPaymentAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             paymentDataGuid,
             "nb",
@@ -219,6 +225,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetSignatureAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -240,6 +247,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult result = await controller.GetPaymentAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -261,6 +269,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormSummaryAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -282,6 +291,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormdataAsPdf(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -303,6 +313,7 @@ public class ContentOnDemandControllerUnitTests
         ActionResult<Stream> result = await controller.GetFormdataAsHtml(
             _org,
             _app,
+            _instanceOwnerPartyId,
             instanceGuid,
             Guid.NewGuid(),
             "nb",
@@ -311,6 +322,209 @@ public class ContentOnDemandControllerUnitTests
 
         // Assert
         Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetSignatureAsHtml_UnauthorizedUser_ReturnsForbidAndDoesNotReadBlob()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Guid signatureDataGuid = Guid.NewGuid();
+        var (controller, blobRepoMock) = CreateController(
+            instanceGuid,
+            [new DataElementInternal { Id = signatureDataGuid, DataType = "signature-data" }],
+            "[{}]",
+            authorized: false
+        );
+
+        // Act
+        ActionResult result = await controller.GetSignatureAsHtml(
+            _org,
+            _app,
+            _instanceOwnerPartyId,
+            instanceGuid,
+            signatureDataGuid,
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<ForbidResult>(result);
+        blobRepoMock.Verify(
+            b =>
+                b.ReadBlob(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task GetPaymentAsHtml_UnauthorizedUser_ReturnsForbid()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Guid paymentDataGuid = Guid.NewGuid();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            [new DataElementInternal { Id = paymentDataGuid, DataType = "payment-data" }],
+            "{}",
+            authorized: false
+        );
+
+        // Act
+        ActionResult result = await controller.GetPaymentAsHtml(
+            _org,
+            _app,
+            _instanceOwnerPartyId,
+            instanceGuid,
+            paymentDataGuid,
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task GetFormSummaryAsHtml_UnauthorizedUser_ReturnsForbid()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Guid htmlDataGuid = Guid.NewGuid();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            CreateFormSummaryDataElements(htmlDataGuid, Guid.NewGuid(), null),
+            "<xml/>",
+            authorized: false
+        );
+
+        // Act
+        ActionResult<Stream> result = await controller.GetFormSummaryAsHtml(
+            _org,
+            _app,
+            _instanceOwnerPartyId,
+            instanceGuid,
+            htmlDataGuid,
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<ForbidResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetFormdataAsHtml_UnauthorizedUser_ReturnsForbid()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Guid htmlDataGuid = Guid.NewGuid();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            CreateFormSummaryDataElements(htmlDataGuid, Guid.NewGuid(), null),
+            "<xml/>",
+            authorized: false
+        );
+
+        // Act
+        ActionResult<Stream> result = await controller.GetFormdataAsHtml(
+            _org,
+            _app,
+            _instanceOwnerPartyId,
+            instanceGuid,
+            htmlDataGuid,
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<ForbidResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetFormdataAsPdf_UnauthorizedUser_ReturnsForbid()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Guid htmlDataGuid = Guid.NewGuid();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            CreateFormSummaryDataElements(htmlDataGuid, Guid.NewGuid(), null),
+            "<xml/>",
+            authorized: false
+        );
+
+        // Act
+        ActionResult<Stream> result = await controller.GetFormdataAsPdf(
+            _org,
+            _app,
+            _instanceOwnerPartyId,
+            instanceGuid,
+            htmlDataGuid,
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<ForbidResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetSignatureAsHtml_InstanceOwnerPartyIdMismatch_ReturnsNotFound()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        Guid signatureDataGuid = Guid.NewGuid();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            [new DataElementInternal { Id = signatureDataGuid, DataType = "signature-data" }],
+            "[{}]"
+        );
+
+        // Act
+        ActionResult result = await controller.GetSignatureAsHtml(
+            _org,
+            _app,
+            _instanceOwnerPartyId + 1,
+            instanceGuid,
+            signatureDataGuid,
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
+    public async Task GetSignatureAsHtml_DataElementNotInInstance_ReturnsNotFound()
+    {
+        // Arrange
+        Guid instanceGuid = Guid.NewGuid();
+        var (controller, _) = CreateController(
+            instanceGuid,
+            [new DataElementInternal { Id = Guid.NewGuid(), DataType = "signature-data" }],
+            "[{}]"
+        );
+
+        // Act
+        ActionResult result = await controller.GetSignatureAsHtml(
+            _org,
+            _app,
+            _instanceOwnerPartyId,
+            instanceGuid,
+            Guid.NewGuid(),
+            "nb",
+            CancellationToken.None
+        );
+
+        // Assert
+        Assert.IsType<NotFoundResult>(result);
     }
 
     private static ContentOnDemandController CreateControllerWithMissingInstance(Guid instanceGuid)
@@ -334,7 +548,8 @@ public class ContentOnDemandControllerUnitTests
             appRepoMock.Object,
             settings,
             formattingMock.Object,
-            pdfMock.Object
+            pdfMock.Object,
+            CreateAuthorizationMock(true).Object
         );
     }
 
@@ -369,7 +584,8 @@ public class ContentOnDemandControllerUnitTests
     ) CreateController(
         Guid instanceGuid,
         List<DataElementInternal> dataElements,
-        string blobContent
+        string blobContent,
+        bool authorized = true
     )
     {
         foreach (DataElementInternal dataElement in dataElements)
@@ -386,7 +602,7 @@ public class ContentOnDemandControllerUnitTests
         InstanceInternal instance = new()
         {
             Id = instanceGuid,
-            InstanceOwner = new InstanceOwner { PartyId = "555" },
+            InstanceOwner = new InstanceOwner { PartyId = _instanceOwnerPartyId.ToString() },
             Org = _org,
             AppId = _appId,
             Data = dataElements,
@@ -432,9 +648,28 @@ public class ContentOnDemandControllerUnitTests
             appRepoMock.Object,
             settings,
             formattingMock.Object,
-            pdfMock.Object
+            pdfMock.Object,
+            CreateAuthorizationMock(authorized).Object
         );
 
         return (controller, blobRepoMock);
+    }
+
+    private static Mock<IAuthorization> CreateAuthorizationMock(bool authorized)
+    {
+        Mock<IAuthorization> authorizationMock = new();
+        authorizationMock
+            .Setup(a => a.AuthorizeEnrichedInstanceAction(It.IsAny<InstanceInternal>(), "read"))
+            .ReturnsAsync(authorized);
+        authorizationMock
+            .Setup(a =>
+                a.AuthorizeInstanceAction(
+                    It.IsAny<InstanceInternal>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>()
+                )
+            )
+            .ReturnsAsync(authorized);
+        return authorizationMock;
     }
 }
