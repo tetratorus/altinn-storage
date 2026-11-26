@@ -13,6 +13,8 @@ using Altinn.Platform.Storage.Configuration;
 using Altinn.Platform.Storage.Controllers;
 using Altinn.Platform.Storage.Interface.Models;
 using Altinn.Platform.Storage.Messages;
+using Altinn.Platform.Storage.Models;
+using Altinn.Platform.Storage.Repository;
 using Altinn.Platform.Storage.UnitTest.Fixture;
 using Altinn.Platform.Storage.UnitTest.Mocks;
 using Altinn.Platform.Storage.UnitTest.Mocks.Authentication;
@@ -71,7 +73,7 @@ public class InstanceEventsControllerTests
     {
         // Arrange
         string requestUri =
-            "storage/api/v1/instances/1337/3c42ee2a-9464-42a8-a976-16eb926bd20a/events/";
+            "storage/api/v1/instances/1337/07274f48-8313-4e2d-9788-bbdacef5a54e/events/";
 
         HttpClient client = GetTestClient();
         string token = PrincipalUtil.GetToken(3, 1337);
@@ -79,7 +81,7 @@ public class InstanceEventsControllerTests
 
         InstanceEvent instance = new InstanceEvent
         {
-            InstanceId = "3c42ee2a-9464-42a8-a976-16eb926bd20a",
+            InstanceId = "07274f48-8313-4e2d-9788-bbdacef5a54e",
         };
 
         // Act
@@ -98,7 +100,7 @@ public class InstanceEventsControllerTests
     {
         // Arrange
         string requestUri =
-            "storage/api/v1/instances/1337/3c42ee2a-9464-42a8-a976-16eb926bd20a/events/";
+            "storage/api/v1/instances/1337/07274f48-8313-4e2d-9788-bbdacef5a54e/events/";
 
         Mock<IMessageBus> messageBusMock = new Mock<IMessageBus>();
         messageBusMock
@@ -111,7 +113,7 @@ public class InstanceEventsControllerTests
 
         InstanceEvent instance = new InstanceEvent
         {
-            InstanceId = "3c42ee2a-9464-42a8-a976-16eb926bd20a",
+            InstanceId = "07274f48-8313-4e2d-9788-bbdacef5a54e",
         };
 
         // Act
@@ -123,6 +125,141 @@ public class InstanceEventsControllerTests
 
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_InstanceIdInBodyRefersToOtherInstance_Returns400AndStoresNothing()
+    {
+        // Arrange
+        string requestUri =
+            "storage/api/v1/instances/1337/07274f48-8313-4e2d-9788-bbdacef5a54e/events/";
+
+        Mock<IInstanceEventRepository> repositoryMock = new Mock<IInstanceEventRepository>();
+        HttpClient client = GetTestClient(instanceEventRepositoryMock: repositoryMock);
+        string token = PrincipalUtil.GetToken(3, 1337);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        InstanceEvent instanceEvent = new InstanceEvent
+        {
+            InstanceId = "1337/08274f48-8313-4e2d-9788-bbdacef5a54e",
+            EventType = "Signed",
+        };
+
+        // Act
+        JsonContent content = JsonContent.Create(
+            instanceEvent,
+            new MediaTypeHeaderValue("application/json")
+        );
+        HttpResponseMessage response = await client.PostAsync(requestUri, content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        repositoryMock.Verify(
+            r => r.InsertInstanceEvent(It.IsAny<InstanceEvent>(), It.IsAny<InstanceInternal>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task Post_InstanceOwnerPartyIdInBodyDiffersFromUrl_Returns400()
+    {
+        // Arrange
+        string requestUri =
+            "storage/api/v1/instances/1337/07274f48-8313-4e2d-9788-bbdacef5a54e/events/";
+
+        HttpClient client = GetTestClient();
+        string token = PrincipalUtil.GetToken(3, 1337);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        InstanceEvent instanceEvent = new InstanceEvent
+        {
+            InstanceId = "1600/07274f48-8313-4e2d-9788-bbdacef5a54e",
+        };
+
+        // Act
+        JsonContent content = JsonContent.Create(
+            instanceEvent,
+            new MediaTypeHeaderValue("application/json")
+        );
+        HttpResponseMessage response = await client.PostAsync(requestUri, content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_UrlPartyIsNotInstanceOwner_IsRejectedAndStoresNothing()
+    {
+        // Arrange
+        string requestUri =
+            "storage/api/v1/instances/1600/07274f48-8313-4e2d-9788-bbdacef5a54e/events/";
+
+        Mock<IInstanceEventRepository> repositoryMock = new Mock<IInstanceEventRepository>();
+        HttpClient client = GetTestClient(instanceEventRepositoryMock: repositoryMock);
+        string token = PrincipalUtil.GetToken(3, 1600);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        InstanceEvent instanceEvent = new InstanceEvent
+        {
+            InstanceId = "1600/07274f48-8313-4e2d-9788-bbdacef5a54e",
+        };
+
+        // Act
+        JsonContent content = JsonContent.Create(
+            instanceEvent,
+            new MediaTypeHeaderValue("application/json")
+        );
+        HttpResponseMessage response = await client.PostAsync(requestUri, content);
+
+        // Assert
+        Assert.NotEqual(HttpStatusCode.Created, response.StatusCode);
+        repositoryMock.Verify(
+            r => r.InsertInstanceEvent(It.IsAny<InstanceEvent>(), It.IsAny<InstanceInternal>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task Post_CreateNewEvent_StoresEventOnUrlInstanceWithServerAssignedId()
+    {
+        // Arrange
+        string requestUri =
+            "storage/api/v1/instances/1337/07274f48-8313-4e2d-9788-bbdacef5a54e/events/";
+        Guid clientSuppliedId = Guid.NewGuid();
+
+        InstanceEvent storedEvent = null;
+        Mock<IInstanceEventRepository> repositoryMock = new Mock<IInstanceEventRepository>();
+        repositoryMock
+            .Setup(r =>
+                r.InsertInstanceEvent(It.IsAny<InstanceEvent>(), It.IsAny<InstanceInternal>())
+            )
+            .Callback<InstanceEvent, InstanceInternal>((e, _) => storedEvent = e)
+            .ReturnsAsync((InstanceEvent e, InstanceInternal _) => e);
+
+        HttpClient client = GetTestClient(instanceEventRepositoryMock: repositoryMock);
+        string token = PrincipalUtil.GetToken(3, 1337);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        InstanceEvent instanceEvent = new InstanceEvent
+        {
+            Id = clientSuppliedId,
+            InstanceId = "07274f48-8313-4e2d-9788-bbdacef5a54e",
+            InstanceOwnerPartyId = "1600",
+        };
+
+        // Act
+        JsonContent content = JsonContent.Create(
+            instanceEvent,
+            new MediaTypeHeaderValue("application/json")
+        );
+        HttpResponseMessage response = await client.PostAsync(requestUri, content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(storedEvent);
+        Assert.Equal("1337/07274f48-8313-4e2d-9788-bbdacef5a54e", storedEvent.InstanceId);
+        Assert.Equal("1337", storedEvent.InstanceOwnerPartyId);
+        Assert.NotEqual(clientSuppliedId, storedEvent.Id);
     }
 
     /// <summary>
@@ -276,7 +413,8 @@ public class InstanceEventsControllerTests
 
     private HttpClient GetTestClient(
         Mock<IMessageBus> messageBusMock = null,
-        bool enableWolverine = false
+        bool enableWolverine = false,
+        Mock<IInstanceEventRepository> instanceEventRepositoryMock = null
     )
     {
         // No setup required for these services. They are not in use by the InstanceEventController
@@ -290,6 +428,11 @@ public class InstanceEventsControllerTests
                 builder.ConfigureTestServices(services =>
                 {
                     services.AddMockRepositories();
+
+                    if (instanceEventRepositoryMock != null)
+                    {
+                        services.AddSingleton(instanceEventRepositoryMock.Object);
+                    }
 
                     services.AddSingleton(keyVaultWrapper.Object);
                     services.AddSingleton(partiesWrapper.Object);

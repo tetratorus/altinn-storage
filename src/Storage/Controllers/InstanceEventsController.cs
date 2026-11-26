@@ -54,6 +54,7 @@ public class InstanceEventsController : ControllerBase
     [Consumes("application/json")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
     public async Task<ActionResult<string>> Post(
         int instanceOwnerPartyId,
@@ -68,16 +69,32 @@ public class InstanceEventsController : ControllerBase
             );
         }
 
+        if (!IsSameInstance(instanceEvent.InstanceId, instanceOwnerPartyId, instanceGuid))
+        {
+            return BadRequest(
+                "instanceId in the instance event must match the instance in the url"
+            );
+        }
+
+        InstanceInternal? instance = await _instanceRepository.GetOne(
+            instanceGuid,
+            false,
+            CancellationToken.None
+        );
+
+        if (instance?.InstanceOwner?.PartyId != instanceOwnerPartyId.ToString())
+        {
+            return NotFound($"Unable to find instance {instanceOwnerPartyId}/{instanceGuid}");
+        }
+
+        instanceEvent.Id = Guid.NewGuid();
+        instanceEvent.InstanceId = $"{instanceOwnerPartyId}/{instanceGuid}";
+        instanceEvent.InstanceOwnerPartyId = instanceOwnerPartyId.ToString();
         instanceEvent.Created = instanceEvent.Created?.ToUniversalTime() ?? DateTime.UtcNow;
 
-        InstanceInternal? instance = null;
-        if (_wolverineSettings.EnableSending)
+        if (!_wolverineSettings.EnableSending)
         {
-            instance = await _instanceRepository.GetOne(
-                instanceGuid,
-                false,
-                CancellationToken.None
-            );
+            instance = null;
         }
 
         InstanceEvent result = await _repository.InsertInstanceEvent(instanceEvent, instance);
@@ -177,5 +194,25 @@ public class InstanceEventsController : ControllerBase
         };
 
         return Ok(instanceEventList);
+    }
+
+    private static bool IsSameInstance(
+        string instanceId,
+        int instanceOwnerPartyId,
+        Guid instanceGuid
+    )
+    {
+        string[] parts = instanceId.Split('/');
+        if (parts.Length > 2 || !Guid.TryParse(parts[^1], out Guid bodyInstanceGuid))
+        {
+            return false;
+        }
+
+        if (bodyInstanceGuid != instanceGuid)
+        {
+            return false;
+        }
+
+        return parts.Length == 1 || parts[0] == instanceOwnerPartyId.ToString();
     }
 }
